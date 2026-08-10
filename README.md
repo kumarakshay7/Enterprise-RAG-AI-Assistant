@@ -3,28 +3,68 @@
 ## Overview
 This repository contains a production-grade, enterprise-ready Retrieval-Augmented Generation (RAG) assistant built using the Microsoft Azure AI stack. It addresses common RAG failure modes including outdated document bias, ambiguity, multi-document synthesis, multi-tenant security isolation, and hallucination prevention.
 
----
+                      AZURE AI ENTERPRISE RAG ARCHITECTURE
+===================================================================================
 
-## System Architecture
-[ UI / Streamlit App ]
-│
-▼
-[ Fast Query Preprocessor & Intent Classifier ] ──► (Detects Ambiguity)
-│
-▼
-[ Contextual Query Rewriter ] (Multi-turn conversational history)
-│
-▼
-[ Azure AI Search Engine ]
-├── Hybrid Search (Dense Vectors + BM25 Sparse Keywords)
-├── Security Filter (OData Security ACLs)
-└── Semantic Ranker (Cross-Encoder Fine-Grained Reranking)
-│
-▼
-[ Strict Grounded Context Aggregator ]
-│
-▼
-[ Azure OpenAI Service (GPT-4o) ] ──► [ Output Response + Inline Citations ]
+ [ DOCUMENT INGESTION PIPELINE ]
+ ┌─────────────────┐     ┌───────────────────┐     ┌────────────────────────────┐
+ │ Enterprise PDFs │ ──► │  PyPDF Extractor  │ ──► │     Semantic Chunking      │
+ └─────────────────┘     └───────────────────┘     │  (400 Tokens, 80 Overlap)  │
+                                                   └─────────────┬──────────────┘
+                                                                 │
+ ┌───────────────────────────────────────────────────────────────┘
+ │
+ │   ┌───────────────────────────────┐     ┌──────────────────────────────────┐
+ └──►│    Azure OpenAI Embeddings    │ ──► │      Azure AI Search Index       │
+     │  (text-embedding-3-large)     │     │   (HNSW Vector + BM25 + ACLs)    │
+     └───────────────────────────────┘     └─────────────────┬────────────────┘
+                                                             │
+=============================================================│=====================
+ [ REAL-TIME QUERY PIPELINE ]                                │
+                                                             │
+ ┌──────────────┐     ┌────────────────────────┐             │
+ │  User Query  │ ──► │ Streamlit Frontend UI  │             │
+ └──────────────┘     └───────────┬────────────┘             │
+                                  │                          │
+                                  ▼                          │
+                      ┌──────────────────────┐               │
+                      │ Ambiguity Guardrail  │ ──► [Ambiguous] ──► (Ask Clarification)
+                      └───────────┬──────────┘
+                                  │ [Valid Query]
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Standalone Query     │
+                      │ Rewriter (GPT-4o)    │
+                      └───────────┬──────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Hybrid Search        │ ◄─────────────────┘
+                      │ (Dense Vector + BM25)│
+                      └───────────┬──────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ OData Security Filter│ (Department Access Control)
+                      └───────────┬──────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Azure AI Search      │
+                      │ Semantic Reranker    │ (Cross-Encoder Fine Ranking)
+                      └───────────┬──────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Azure OpenAI GPT-4o  │ (Strict Grounding, Temp = 0.0)
+                      └───────────┬──────────┘
+                                  │
+                                  ▼
+                      ┌──────────────────────┐
+                      │ Grounded Answer +    │
+                      │ Document Citations   │
+                      └──────────────────────┘
+===================================================================================
 
 
 ### Architectural Decisions
